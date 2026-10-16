@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flip Clock & Pomodoro</title>
+<style>
+    :root {
+        --bg: #ffffff;
+        --ink: #4a2a38;
+        --muted: #a8788b;
+        --line: #f6d3e2;
+        --tint: #fff0f6;
+        --pink-top: #ff7eb0;
+        --pink-bot: #f4609b;
+        --hinge: #cf3a77;
+        --glow: rgba(244, 96, 155, 0.28);
+        --dot-off: #f3cfdd;
+        --t: 0.3s ease;
+        --w: min(16vw, 22vh, 112px);   /* lebar 1 kartu angka, semua ukuran ngikut ini */
+        --r: calc(var(--w) * 0.12);
+    }
+
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: "Poppins", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+        background: var(--bg);
+        color: var(--ink);
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+    }
+
+    .widget {
+        width: 100%;
+        height: 100%;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 10px; margin-bottom: 2.5vh; }
+
+    .tab-btn {
+        background: transparent;
+        color: var(--ink);
+        border: 1px solid var(--line);
+        padding: clamp(4px, 1.5vw, 8px) clamp(12px, 3vw, 20px);
+        border-radius: 20px;
+        font-size: clamp(0.8rem, 2vw, 0.9rem);
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--t);
+    }
+    .tab-btn:hover { background: var(--tint); }
+    .tab-btn.active { background: var(--pink-bot); border-color: var(--pink-bot); color: #fff; }
+
+    button:focus-visible { outline: 2px solid var(--pink-bot); outline-offset: 2px; }
+
+    /* Views */
+    .view { display: none; width: 100%; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    .view.active { display: flex; animation: fadeIn 0.4s ease both; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+    .date-display {
+        margin-top: 2vh;
+        font-size: clamp(0.75rem, 2.4vw, 0.95rem);
+        font-weight: 500;
+        color: var(--muted);
+    }
+
+    .pomodoro-label {
+        margin-bottom: 1.5vh;
+        font-size: clamp(1rem, 3.5vw, 1.3rem);
+        font-weight: 600;
+    }
+
+    /* Flip clock */
+    .flip { display: flex; align-items: center; justify-content: center; }
+    .pair { display: flex; gap: calc(var(--w) * 0.06); }
+
+    .colon {
+        width: calc(var(--w) * 0.36);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: calc(var(--w) * 0.22);
+    }
+    .colon i { width: calc(var(--w) * 0.1); height: calc(var(--w) * 0.1); border-radius: 50%; background: var(--pink-bot); }
+    #clockFlip .colon i { animation: blink 2s step-end infinite; }
+    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.25; } }
+
+    .digit {
+        position: relative;
+        width: var(--w);
+        height: calc(var(--w) * 1.4);
+        font-size: var(--w);
+        font-weight: 700;
+        color: #fff;
+        perspective: calc(var(--w) * 5);
+        border-radius: var(--r);
+        box-shadow: 0 calc(var(--w) * 0.06) calc(var(--w) * 0.16) var(--glow);
+    }
+    .digit::after {   /* garis engsel di tengah kartu */
+        content: "";
+        position: absolute;
+        left: 0; right: 0; top: 50%;
+        height: 2px;
+        margin-top: -1px;
+        background: var(--hinge);
+        z-index: 5;
+    }
+
+    .half { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; backface-visibility: hidden; }
+    .half span {
+        position: absolute; left: 0; right: 0; height: 200%;
+        display: flex; align-items: center; justify-content: center;
+        line-height: 1;
+    }
+    .t, .ft { top: 0; border-radius: var(--r) var(--r) 0 0; background: linear-gradient(var(--pink-top), #fa6fa5); transform-origin: bottom; }
+    .b, .fb { bottom: 0; border-radius: 0 0 var(--r) var(--r); background: linear-gradient(#f8689f, var(--pink-bot)); transform-origin: top; }
+    .t span, .ft span { top: 0; }
+    .b span, .fb span { bottom: 0; }
+
+    .ft, .fb { display: none; }
+    .digit.go .ft { display: block; z-index: 3; animation: fallTop 0.25s ease-in both; }
+    .digit.go .fb { display: block; z-index: 4; animation: fallBot 0.25s 0.25s ease-out both; }
+    @keyframes fallTop { from { transform: rotateX(0); } to { transform: rotateX(-90deg); } }
+    @keyframes fallBot { from { transform: rotateX(90deg); } to { transform: rotateX(0); } }
+
+    /* Pomodoro controls */
+    .controls { display: flex; gap: 15px; margin: 3vh 0 1.5vh; }
+    .control-btn {
+        width: clamp(40px, 10vw, 50px);
+        height: clamp(30px, 8vw, 36px);
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--pink-bot);
+        display: flex; justify-content: center; align-items: center;
+        cursor: pointer;
+        transition: var(--t);
+    }
+    .control-btn:hover { background: var(--tint); }
+    .control-btn svg { width: 18px; height: 18px; fill: currentColor; }
+    .control-btn svg.stroke { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    .dots { display: flex; gap: 8px; margin-top: 10px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot-off); transition: var(--t); }
+    .dot.active { background: var(--pink-bot); transform: scale(1.25); }
+    .dot.completed { background: var(--pink-bot); opacity: 0.55; }
+
+    @media (prefers-reduced-motion: reduce) {
+        .digit.go .ft, .digit.go .fb { animation: none; display: none; }
+        #clockFlip .colon i { animation: none; }
+    }
+</style>
+</head>
+<body>
+<div class="widget">
+    <div class="tabs">
+        <button class="tab-btn active" id="btnClock">Clock</button>
+        <button class="tab-btn" id="btnPomodoro">Pomodoro</button>
+    </div>
+
+    <div class="view active" id="viewClock">
+        <div class="flip" id="clockFlip"></div>
+        <p class="date-display" id="clockDate">Day, 00 Mon 0000</p>
+    </div>
+
+    <div class="view" id="viewPomodoro">
+        <p class="pomodoro-label" id="pomodoroLabel">Focus Time</p>
+        <div class="flip" id="pomoFlip"></div>
+
+        <div class="controls">
+            <button class="control-btn" id="pomoReset" title="Reset" aria-label="Reset">
+                <svg class="stroke" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            </button>
+            <button class="control-btn" id="pomoPlay" title="Play/Pause" aria-label="Play atau pause">
+                <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <svg id="pauseIcon" viewBox="0 0 24 24" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
+            <button class="control-btn" id="pomoSkip" title="Skip Phase" aria-label="Skip fase">
+                <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            </button>
+        </div>
+
+        <div class="dots" id="dots">
+            <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---------- Flip clock ----------
+    const card = () =>
+        '<div class="digit" data-v="0">' +
+        '<div class="half t"><span>0</span></div><div class="half b"><span>0</span></div>' +
+        '<div class="half ft"><span>0</span></div><div class="half fb"><span>0</span></div></div>';
+
+    function buildFlip(root) {
+        root.innerHTML =
+            '<div class="pair">' + card() + card() + '</div>' +
+            '<div class="colon"><i></i><i></i></div>' +
+            '<div class="pair">' + card() + card() + '</div>';
+    }
+
+    function setDigit(d, v, instant) {
+        const old = d.dataset.v;
+        const [t, b, ft, fb] = d.querySelectorAll('span');
+        if (instant) {
+            [t, b, ft, fb].forEach(s => s.textContent = v);
+            d.dataset.v = v;
+            return;
+        }
+        if (old === v) return;
+        if (d._timer) { clearTimeout(d._timer); b.textContent = old; }
+        t.textContent = v;      // bagian atas statis langsung angka baru
+        ft.textContent = old;   // lembar atas (angka lama) jatuh ke bawah
+        fb.textContent = v;     // lembar bawah (angka baru) naik menutup
+        d.classList.remove('go');
+        void d.offsetWidth;     // restart animasi
+        d.classList.add('go');
+        d.dataset.v = v;
+        d._timer = setTimeout(() => {
+            b.textContent = v;
+            d.classList.remove('go');
+            d._timer = null;
+        }, 520);
+    }
+
+    function setFlip(root, str, instant) {
+        root.querySelectorAll('.digit').forEach((d, i) => setDigit(d, str[i], instant));
+    }
+
+    const clockFlip = document.getElementById('clockFlip');
+    const pomoFlip = document.getElementById('pomoFlip');
+    buildFlip(clockFlip);
+    buildFlip(pomoFlip);
+
+    // ---------- Tab ----------
+    const btnClock = document.getElementById('btnClock');
+    const btnPomodoro = document.getElementById('btnPomodoro');
+    const viewClock = document.getElementById('viewClock');
+    const viewPomodoro = document.getElementById('viewPomodoro');
+
+    function switchTab(onBtn, offBtn, onView, offView) {
+        onBtn.classList.add('active');
+        offBtn.classList.remove('active');
+        onView.classList.add('active');
+        offView.classList.remove('active');
+    }
+    btnClock.addEventListener('click', () => switchTab(btnClock, btnPomodoro, viewClock, viewPomodoro));
+    btnPomodoro.addEventListener('click', () => switchTab(btnPomodoro, btnClock, viewPomodoro, viewClock));
+
+    // ---------- Jam ----------
+    const clockDate = document.getElementById('clockDate');
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    let firstTick = true;
+
+    function updateClock() {
+        const now = new Date();
+        const hm = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0');
+        setFlip(clockFlip, hm, firstTick);
+        firstTick = false;
+        clockDate.textContent = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // ---------- Pomodoro ----------
+    const pomoLabel = document.getElementById('pomodoroLabel');
+    const btnPlay = document.getElementById('pomoPlay');
+    const btnReset = document.getElementById('pomoReset');
+    const btnSkip = document.getElementById('pomoSkip');
+    const playIcon = document.getElementById('playIcon');
+    const pauseIcon = document.getElementById('pauseIcon');
+    const dots = document.querySelectorAll('.dot');
+
+    const MODES = {
+        FOCUS: { time: 25 * 60, label: 'Focus Time' },
+        SHORT_BREAK: { time: 5 * 60, label: 'Short Break' },
+        LONG_BREAK: { time: 30 * 60, label: 'Long Break' }
+    };
+
+    let mode = 'FOCUS';
+    let timeLeft = MODES.FOCUS.time;
+    let running = false;
+    let endAt = 0;
+    let ticker = null;
+    let completed = 0; // 0 sampai 4 sesi fokus
+
+    function renderTime(instant) {
+        const m = String(Math.floor(timeLeft / 60)).padStart(2, '0');
+        const s = String(timeLeft % 60).padStart(2, '0');
+        setFlip(pomoFlip, m + s, instant);
+    }
+
+    function renderUI() {
+        pomoLabel.textContent = MODES[mode].label;
+        dots.forEach((dot, i) => {
+            dot.className = 'dot';
+            if (i < completed) dot.classList.add('completed');
+            if (i === completed && mode === 'FOCUS') dot.classList.add('active');
+        });
+    }
+
+    function setPlayIcon(isRunning) {
+        playIcon.style.display = isRunning ? 'none' : 'block';
+        pauseIcon.style.display = isRunning ? 'block' : 'none';
+    }
+
+    function stopTimer() {
+        clearInterval(ticker);
+        running = false;
+        setPlayIcon(false);
+    }
+
+    function startTimer() {
+        endAt = Date.now() + timeLeft * 1000; // pakai waktu asli biar nggak molor kalau tab di-throttle
+        ticker = setInterval(() => {
+            timeLeft = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+            renderTime();
+            if (timeLeft <= 0) nextPhase();
+        }, 250);
+        running = true;
+        setPlayIcon(true);
+    }
+
+    function switchMode(newMode) {
+        stopTimer(); // ganti fase selalu berhenti dulu
+        mode = newMode;
+        timeLeft = MODES[mode].time;
+        renderUI();
+        renderTime();
+    }
+
+    function nextPhase() {
+        if (mode === 'FOCUS') {
+            completed++;
+            switchMode(completed === 4 ? 'LONG_BREAK' : 'SHORT_BREAK');
+        } else {
+            if (completed === 4) completed = 0; // siklus reset setelah long break
+            switchMode('FOCUS');
+        }
+    }
+
+    btnPlay.addEventListener('click', () => (running ? stopTimer() : startTimer()));
+    btnReset.addEventListener('click', () => switchMode(mode));
+    btnSkip.addEventListener('click', nextPhase);
+
+    renderUI();
+    renderTime(true);
+</script>
+</body>
+</html>
